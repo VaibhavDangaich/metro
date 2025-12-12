@@ -19,43 +19,33 @@ def image_to_data_uri(image_path):
         encoded = base64.b64encode(img_file.read()).decode("utf-8")
     return f"data:image/jpeg;base64,{encoded}"
 
+# UPDATED SCHEMA: Supports multiple segments with different colors
 json_Schema = {
     "title": "MetroRoute",
     "type": "object",
     "properties": {
-        "source_station": {
-            "type": "string",
-            "description": "Name of the starting metro station."
-        },
-        "destination_station": {
-            "type": "string",
-            "description": "Name of the destination metro station."
-        },
-        "line_preference": {
-            "type": "string",
-            "enum": [
-                "North South Line", "East West Line", "Southwestern (Joka) Line",
-                "Newtown (Airport) Line", "Eastern (Barasat) Line",
-                "Northern (Barrackpore) Line", "fastest", "least interchanges", "any"
-            ],
-            "description": "Preferred metro line or route type."
-        },
-        "line_color": {
-            "type": "string",
-            "enum": ["blue", "green", "purple", "yellow", "orange", "pink"],
-            "description": "Color of the metro route line as per the map legend."
-        },
-        "allow_interchange": {
-            "type": "boolean",
-            "default": True,
-            "description": "Whether interchanges are allowed."
-        },
-        "response_language": {
-            "type": "string",
-            "description": "Preferred language for the response."
+        "source_station": {"type": "string"},
+        "destination_station": {"type": "string"},
+        "total_stations": {"type": "integer"},
+        "estimated_time_minutes": {"type": "integer"},
+        "route_segments": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "start_station": {"type": "string"},
+                    "end_station": {"type": "string"},
+                    "line_color": {
+                        "type": "string",
+                        "enum": ["blue", "green", "purple", "yellow", "orange", "pink"]
+                    },
+                    "instructions": {"type": "string", "description": "e.g., 'Take Blue Line towards Kavi Subash'"}
+                },
+                "required": ["start_station", "end_station", "line_color", "instructions"]
+            }
         }
     },
-    "required": ["source_station", "destination_station"]
+    "required": ["source_station", "destination_station", "route_segments"]
 }
 
 model = ChatOpenAI(model_name="gpt-4o", temperature=0).with_structured_output(json_Schema)
@@ -80,6 +70,11 @@ stations = [
 source = st.selectbox("Select Source Station", stations)
 destination = st.selectbox("Select Destination Station", stations)
 
+color_map = {
+    "blue": "#0074D9", "green": "#2ECC40", "purple": "#B10DC9",
+    "yellow": "#FFDC00", "orange": "#FF851B", "pink": "#F012BE"
+}
+
 if st.button("Find Route"):
     if not os.path.exists(image_path):
         st.error("Cannot proceed: Map image missing.")
@@ -91,7 +86,7 @@ if st.button("Find Route"):
                 content=[
                     {
                         "type": "text", 
-                        "text": f"Find the best route from {source} to {destination}. Return the details in JSON format matching the schema."
+                        "text": f"Find the best route from {source} to {destination}. If there is a line change, split the route into segments. Return JSON."
                     },
                     {
                         "type": "image_url", 
@@ -103,28 +98,25 @@ if st.button("Find Route"):
             try:
                 result = model.invoke([message])
                 
-                st.subheader("Route Suggestion:")
-                st.markdown(f"**From:** {result.get('source_station')}")
-                st.markdown(f"**To:** {result.get('destination_station')}")
+                st.subheader("Route Plan")
+                st.markdown(f"**From:** {result.get('source_station')}  ➡️  **To:** {result.get('destination_station')}")
                 
-                color_map = {
-                    "blue": "#0074D9", "green": "#2ECC40", "purple": "#B10DC9",
-                    "yellow": "#FFDC00", "orange": "#FF851B", "pink": "#F012BE"
-                }
-                line_color = result.get('line_color', '').lower()
+                if 'total_stations' in result:
+                    st.caption(f"Total Stations: {result['total_stations']} | Est. Time: {result.get('estimated_time_minutes', '?')} mins")
                 
-                if line_color in color_map:
-                    st.markdown(f'<hr style="height:8px;border:none;background:{color_map[line_color]};margin:10px 0;">', unsafe_allow_html=True)
-                    st.markdown(f"**Line Color:** <span style='color:{color_map[line_color]};font-weight:bold'>{line_color.title()}</span>", unsafe_allow_html=True)
-                elif line_color:
-                    st.markdown(f"**Line Color:** {line_color.title()}")
+                segments = result.get('route_segments', [])
                 
-                ignore_keys = ["source_station", "destination_station", "line_preference", 
-                               "allow_interchange", "response_language", "line_color"]
-                
-                for k, v in result.items():
-                    if k not in ignore_keys:
-                        st.markdown(f"**{k.replace('_', ' ').title()}:** {v}")
+                for i, segment in enumerate(segments):
+                    line_color = segment.get('line_color', '').lower()
+                    hex_color = color_map.get(line_color, '#808080')
+                    
+                    with st.container():
+                        st.markdown(f"#### Step {i+1}: {segment.get('start_station')} to {segment.get('end_station')}")
+                        st.markdown(f'<div style="background-color:{hex_color};padding:4px 10px;border-radius:5px;color:white;font-weight:bold;width:fit-content;margin-bottom:5px;">{line_color.upper()} LINE</div>', unsafe_allow_html=True)
+                        st.write(segment.get('instructions'))
                         
+                        if i < len(segments) - 1:
+                            st.markdown("**⬇️ CHANGE TRAIN**")
+                            
             except Exception as e:
                 st.error(f"An error occurred: {e}")
