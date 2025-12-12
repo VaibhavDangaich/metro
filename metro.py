@@ -48,7 +48,7 @@ json_Schema = {
     "required": ["source_station", "destination_station", "route_segments"]
 }
 
-model = ChatOpenAI(model_name="gpt-5-mini", temperature=0).with_structured_output(json_Schema)
+model = ChatOpenAI(model_name="gpt-4o-mini-vision", temperature=0).with_structured_output(json_Schema)
 
 st.header('Metro Guide')
 
