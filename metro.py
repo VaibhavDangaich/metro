@@ -11,6 +11,7 @@ def image_to_data_uri(image_path):
 load_dotenv()
 
 json_Schema = {
+    "title": "MetroRoute",
     "type": "object",
     "properties": {
         "source_station": {
