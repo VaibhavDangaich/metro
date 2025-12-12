@@ -10,8 +10,6 @@ def image_to_data_uri(image_path):
 
 load_dotenv()
 
-model = ChatOpenAI(model_name="gpt-4o")
-
 json_Schema = {
     "type": "object",
     "properties": {
@@ -63,6 +61,8 @@ json_Schema = {
     "required": ["source_station", "destination_station"]
 }
 
+model = ChatOpenAI(model_name="gpt-4o").with_structured_output(json_Schema)
+
 st.header('Metro Guide')
 st.image("metro.jpeg", caption="Kolkata Metro Map", use_column_width=True)
 
@@ -87,21 +87,30 @@ destination = st.selectbox("Select Destination Station", stations)
 if st.button("Find Route"):
     with st.spinner("Finding best route..."):
         image_data_uri = image_to_data_uri("metro.jpeg")
-        result = model.invoke([
-    {
-        "role": "user",
-        "content": [
-            {"type": "text", "text": f"What is the best route from {source} to {destination}? Also mention the line color."},
-            {
-                "type": "image_url", 
-                "image_url": {
-                    "url": image_data_uri,
-                    "detail": "high"
-                }
-            }
-        ]
-    }
-])
-    st.subheader("Route Suggestion:")
-    st.write(result.content)
+        result = model.invoke({
+            "source_station": source,
+            "destination_station": destination
+        })
+        st.subheader("Route Suggestion:")
+        st.markdown(f"**From:** {result.get('source_station')}")
+        st.markdown(f"**To:** {result.get('destination_station')}")
+        # Show line color as a colored line
+        color_map = {
+            "blue": "#0074D9",
+            "green": "#2ECC40",
+            "purple": "#B10DC9",
+            "yellow": "#FFDC00",
+            "orange": "#FF851B",
+            "pink": "#F012BE"
+        }
+        line_color = result.get('line_color', '').lower()
+        if line_color in color_map:
+            st.markdown(f'<hr style="height:8px;border:none;background:{color_map[line_color]};margin:10px 0;">', unsafe_allow_html=True)
+            st.markdown(f"**Line Color:** <span style='color:{color_map[line_color]};font-weight:bold'>{line_color.title()}</span>", unsafe_allow_html=True)
+        elif line_color:
+            st.markdown(f"**Line Color:** {line_color.title()}")
+        # Show any additional info from the model
+        for k, v in result.items():
+            if k not in ["source_station", "destination_station", "line_preference", "allow_interchange", "response_language", "line_color"]:
+                st.markdown(f"**{k.replace('_', ' ').title()}:** {v}")
 
